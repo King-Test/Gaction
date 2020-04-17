@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+#echo pass!
+#exit 0
+
+source $(dirname $0)/common.d/check_root.sh
+ROOT=$(check_root $1)
+
+INPUT="$ROOT/video"
+
+function app()
+{
+  if [ -e $INPUT ]; then
+     use "$TASK_UPLOAD_USE"
+  else
+     echo $INPUT not exist!
+     exit 1
+  fi
+}
+
+function use()
+{
+    case "$1" in
+	 "esc") esc;;
+	 "baidu") baidu;;
+	 "lanzou") lanzou;;
+         *) echo "Upload for nothing. Try to export TASK_UPLOAD_USE=esc or TASK_UPLOAD_USE=baidu"; exit 1;;
+    esac
+}
+
+function lanzou()
+{
+  if [ ! -z $TASK_UPLOAD_KEY ]; then
+     LANZOU_KEY=$TASK_UPLOAD_KEY
+  fi
+   if [ ! -z $LANZOU_KEY ]; then
+     local exe="$ROOT/tools/bin/lanz"
+     local skey="$(echo $LANZOU_KEY | awk -F "/" '{print $1" "$2}')"
+     local comm="$exe once $skey upload $INPUT"
+     #echo $comm &&
+     $comm
+  else
+     echo Not found LANZOU_KEY!
+     exit 1
+  fi
+}
+
+function esc()
+{
+  if [ ! -z $TASK_UPLOAD_KEY ]; then
+     ESC_KEY=$TASK_UPLOAD_KEY
+  fi
+   if [ ! -z $ESC_KEY ]; then
+     local exe="$ROOT/tools/bin/esc_ng"
+     local skey="$(echo $ESC_KEY | awk -F "/" '{print $1" "$2}')"
+     local comm="$exe $skey upload $INPUT"
+     #echo $comm && 
+     $comm
+  else
+     echo Not found ESC_KEY!
+     exit 1
+  fi
+#   for i in $(find $INPUT -type f -print); do
+#      echo "$i upload..."
+#      local comm="$exe $INPUT $(basename $i)"
+#      echo $comm && $comm
+#   done
+
+}
+
+function baidu()
+{
+  if [ ! -z $TASK_UPLOAD_KEY ]; then
+     BAIDU_KEY=$TASK_UPLOAD_KEY
+  fi
+  if [ ! -z $BAIDU_KEY ]; then
+   local exe="$ROOT/tools/bin/BaiduPCS-Go"
+   local config="$ROOT/tools/bdwp/config"
+   local path="/apps/baidu_shurufa/youtube"
+   local comm="$exe login -bduss=$BAIDU_KEY"
+
+   export BAIDUPCS_GO_CONFIG_DIR=$config
+
+   #echo $comm &&
+   $comm
+
+   comm="$exe upload $INPUT/* $path"
+
+   echo $comm && $comm
+ else
+   echo Not found BAIDU_KEY!
+   exit 1 
+ fi
+}
+
+app $# $*

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+ROOT=$(dirname $0)
+CHECK_DIR=$ROOT/check.d
+
+function app()
+{
+   use "$TASK_CHECK_USE"
+   mkdir -p $ROOT/../video
+}
+
+function use()
+{
+  case "$1" in
+     "base")   check ffmpeg requests tree;;
+     "glive")  check ffmpeg requests yaml tree;;
+     "curl")   check curl requests tree;;
+     "wget")   check wget requests tree;;
+     "axel")   check axel requests tree;;
+     "aria2c") check aria2c requests tree;;
+     *) echo "Check for nothing. Try to export TASK_CHECK_USE=base"; exit 1;;
+  esac
+}
+
+function check()
+{ 
+  for i in "$@"; do
+     echo "Checking $i...";
+     case "$i" in
+	"tree") 
+		source $CHECK_DIR/apt.sh && apt_check tree;
+	;;
+	"aria2c") 
+		source $CHECK_DIR/apt.sh && apt_check aria2c;
+	;;
+	"axel") 
+		source $CHECK_DIR/apt.sh && apt_check axel;
+	;;
+	"wget") 
+		source $CHECK_DIR/apt.sh && apt_check wget;
+	;;
+	"apt_curl") 
+		source $CHECK_DIR/apt.sh && apt_check curl;
+	;;
+	"curl") 
+		source $CHECK_DIR/curl.sh && check_curl;
+	;;
+	"ffmpeg")
+		source $CHECK_DIR/ffmpeg.sh && check_ffmpeg;
+	;;
+	"requests")
+                source $CHECK_DIR/requests.sh && check_requests;
+	;;
+	"yaml")
+                source $CHECK_DIR/yaml.sh && check_yaml;
+	;;
+	*)
+		echo "Check error! Not found $i"
+	;;
+     esac
+     echo ""
+  done
+}
+
+app $# $*

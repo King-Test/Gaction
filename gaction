@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+
+ROOT=$(pwd)
+TASK=$ROOT/tasks
+CONFIG=$ROOT/.config
+UPSS=$ROOT/stage/upss
+STORAGE=$ROOT/stage/storage
+
+function app()
+{
+  if [ $# -le 1 ]; then
+    echo "Usage: $0 [run|new|add|adc|config|aup|check|download|upload|notify]"
+  else
+   #local argc=$1
+    shift 1
+    case "$1" in
+      "check") run_task check;;
+      "download") run_task download;;
+      "split") run_task split;;
+      "compress") run_task compress;;
+      "upload") run_task upload;;
+      "notify") run_task notify;;
+      "run") shift; run_task $*;;
+      "new") shift; create_task $*;;
+      "adg") shift; add_task gaction $*;;
+      "add") shift; add_task $*;;
+      "adc") shift; add_command $*;;
+      "config") shift; config $*;;
+      "aup") shift; auto_push $*;;
+      "faup") shift; force_auto_push $*;;
+      "g") shift; git $*;;
+      "gvs") git status;;
+      "gd") git diff;;
+      "glog"|"gl") git log --oneline --decorate --graph;;
+      "c") shift; $*;;
+      "w") android view $(get_url github);;
+      "a") android view $(get_url actions);;
+      "e") android view $(get_url esc);;
+      "r") cat $ROOT/README.md;;
+      "install") $ROOT/install;;
+      "cc") cat $ROOT/.config;;
+      "st") shift; $ROOT/stage/storage $*;;
+      "tt") shift; $ROOT/stage/test $*;;
+      "ct") shift; $ROOT/stage/test create_team $*;;
+      "ls") shift; $ROOT/stage/test list $*;;
+      "rr") shift; $ROOT/stage/test delete_record $*;;
+      "rm") shift; $ROOT/stage/test delete $*;;
+      "dl") shift; $ROOT/stage/test download $*;;
+      "pd") shift; $ROOT/stage/test pure_download $*;;
+      "av") shift; $ROOT/stage/test view $*;;
+      "in") shift; $ROOT/stage/test ipk $*;;
+      "up") shift; $ROOT/stage/test upload $*;;
+      "lz") shift; $ROOT/tools/bin/lanz;;
+      "lzz") shift; $ROOT/tools/bin/lanz once 0 0 $*;;
+      *) echo error command! $1; exit 1;;
+    esac
+  fi
+}
+
+function get_url()
+{
+    case "$1" in
+      "github") 
+	 local user=$($STORAGE get GITHUB_KEY | awk -F "/" '{print $1}')
+         echo "https://github.com/$user/Gaction.git"
+      ;;
+      "actions") 
+	 local user=$($STORAGE get GITHUB_KEY | awk -F "/" '{print $1}')
+         echo "https://github.com/$user/Gaction/actions"
+      ;;
+      "esc")
+         local zone="$(jq .zone $ROOT/stage/esc_config.json -r)"
+         local prid="$(jq .prid $ROOT/stage/esc_config.json -r)"
+	 echo "http://ddl.escience.cn/$zone/list#path=%2F$prid"
+      ;;
+      *) 
+	 echo "not found flag: $1"; 
+	 exit 1
+      ;;
+    esac
+}
+
+function base_auto_push()
+{
+   local msg="$1"
+   local tag="$2"
+   local flag="$3"
+   if [ "$msg" == "" ]; then
+      msg="$(date "+%Y-%m-%d %H:%M:%S") update by $tag"
+   fi
+   if [ "$flag" == "force" ]; then
+      flag="--allow-empty"
+   else
+      flag=""
+   fi
+   git add $ROOT && git commit $flag -m "$msg" && $UPSS -dt push
+   if [ $? -eq 0 ]; then
+      echo "Gaction推送任务成功，离线下载将在稍后开始，请注意查收邮件！"
+   else
+      echo "Gaction推送任务失败！"
+      exit 1
+   fi
+}
+
+function auto_push()
+{
+   base_auto_push "$*" "aup"
+}
+
+function force_auto_push()
+{
+   base_auto_push "$*" "faup" "force"
+}
+
+function add_command()
+{
+   if [ $# -gt 0 ]; then
+      echo "add command..."
+      echo "\$ $@" | tee $ROOT/README.md
+      auto_push "add_command $@"
+   else
+      echo "command is null!"
+   fi
+}
+
+function auto_config()
+{
+   NOT_CLEAR_CONFIG=1
+   echo "# auto config $1" | tee $CONFIG
+   case "$1" in
+      "curl") config -cu curl -du curl -do "-#";; 
+      "wget") config -cu wget -du wget -do "-q";; 
+      "axel") config -cu axel -du axel -do "-q";; 
+      "aria2c") config -cu aria2c -du aria2c;;
+      "glive") config -cu glive -du youtube-dl -do "-q";;
+   esac
+   config -su simple -pu zip -uu esc -nu mail
+}
+
+function config()
+{
+#  set -x
+  if [ -z $NOT_CLEAR_CONFIG ]; then
+     rm -rf $CONFIG
+  fi
+  if [ $# -gt 0 ]; then
+     declare -a args=("$@")
+     local i=0
+     while [[ $i < ${#args[@]} ]]; do
+	local s=2
+        case "${args[i]}" in
+          "-cu") echo TASK_CHECK_USE="${args[i+1]}" | tee -a $CONFIG  ;;
+          "-du") echo TASK_DOWNLOAD_USE="${args[i+1]}" | tee -a $CONFIG ;;
+          "-su") echo TASK_SPLIT_USE="${args[i+1]}" | tee -a $CONFIG;;
+          "-pu") echo TASK_COMPRESS_USE="${args[i+1]}" | tee -a $CONFIG;;
+          "-uu") echo TASK_UPLOAD_USE="${args[i+1]}" | tee -a $CONFIG;;
+          "-nu") echo TASK_NOTIFY_USE="${args[i+1]}" | tee -a $CONFIG;;
+          "-do") echo TASK_DOWNLOAD_OPTION="${args[i+1]}" | tee -a $CONFIG;;
+          "-fm") echo TASK_DOWNLOAD_YOUTUBE_DL_FMT="${args[i+1]}" | tee -a $CONFIG;;
+          "-uk") echo TASK_UPLOAD_KEY="${args[i+1]}" | tee -a $CONFIG;;
+          "-nk") echo TASK_NOTIFY_KEY="${args[i+1]}" | tee -a $CONFIG;;
+	  "curl") auto_config curl;; 
+	  "wget") auto_config wget;; 
+	  "axel") auto_config axel;; 
+	  "aria2c") auto_config aria2c;; 
+	  "wg"|"glive") auto_config glive;; 
+        esac
+	let i+=$s
+     done
+  else
+     gen_default_config
+  fi
+# set +x
+}
+
+function gen_default_config()
+{
+   echo gen default config...
+   echo -e "# NOTICE: This file is auto-gen config for Gaction. You may modify it to match what you want.\n" | tee $CONFIG
+   echo "TASK_CHECK_USE=base" | tee -a $CONFIG
+   echo "TASK_DOWNLOAD_USE=you-get" | tee -a $CONFIG
+   echo "TASK_SPLIT_USE=skip" | tee -a $CONFIG
+   echo "TASK_COMPRESS_USE=skip" | tee -a $CONFIG
+   echo "TASK_UPLOAD_USE=esc" | tee -a $CONFIG
+   echo "TASK_NOTIFY_USE=mail" | tee -a $CONFIG
+   echo "" >> $CONFIG
+   echo "# TASK_DOWNLOAD_OPTION=" | tee -a $CONFIG
+   echo "# TASK_DOWNLOAD_FORCE=1" | tee -a $CONFIG
+   echo "# TASK_DOWNLOAD_YOUTUBE_DL_FMT=%(id)s.%(ext)s" | tee -a $CONFIG
+   echo "# TASK_UPLOAD_KEY=" | tee -a $CONFIG
+   echo "# TASK_NOTIFY_KEY=" | tee -a $CONFIG
+   echo ""
+}
+
+function run_task()
+{
+    if [ ! -e $CONFIG ]; then
+       gen_default_config
+    fi
+    local comm=""
+    case "$1" in
+      "check")
+	  comm="$(sed -n "/^TASK_CHECK/p" $CONFIG) $TASK/check"
+      ;;
+      "download")
+	  comm="$(sed -n "/^TASK_DOWNLOAD/p" $CONFIG) $TASK/download $ROOT"
+      ;;
+      "split")  
+ 	  comm="$(sed -n "/^TASK_SPLIT/p" $CONFIG) $TASK/split $ROOT"
+      ;;
+      "compress")  
+ 	  comm="$(sed -n "/^TASK_COMPRESS/p" $CONFIG) $TASK/compress $ROOT"
+      ;;
+      "upload")  
+ 	  comm="$(sed -n "/^TASK_UPLOAD/p" $CONFIG) $TASK/upload $ROOT"
+      ;;
+      "notify")   
+	  comm="$(sed -n "/^TASK_NOTIFY/p" $CONFIG) $TASK/notify $ROOT"
+      ;;
+      *) echo "Usage: $0 run [check|download|split|upload|notify]"; exit 0;;
+    esac
+    if [ "$comm" != "" ]; then
+       echo "=> $comm" && eval $comm
+       if [ $? -ne 0 ]; then exit 1; fi
+    fi
+    echo ""
+}
+
+function add_task()
+{
+   if [ $# -ge 2 ]; then
+      echo "# $1" | tee    $ROOT/README.md
+      echo "---"  | tee -a $ROOT/README.md
+      echo $2 $3  | tee -a $ROOT/README.md
+      auto_push "$1"
+   fi
+}
+
+function create_task()
+{
+   declare -a list=($*)
+   local tmp=$(mktemp -u)
+   for((i=0; i < ${#list[@]}; i++)); do
+     echo "# video: $i"| tee $tmp
+     echo "---"  | tee -a $tmp
+     echo "${list[i]} video_$i" | tee -a $tmp
+   done
+   if [ -e $tmp ]; then
+     mv $tmp $ROOT/README.md
+     auto_push "new"
+   fi
+}
+
+app $# $*

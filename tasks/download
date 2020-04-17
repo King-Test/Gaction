@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+
+source $(dirname $0)/common.d/check_root.sh
+ROOT=$(check_root $1)
+
+TOOLS=$ROOT/tools
+README=$ROOT/README.md
+URL_LIST=$ROOT/url.list
+OUTPUT_DIR=$ROOT/video
+
+#YOU_GET_OPTION=
+#YOUTUBE_DL_OPTION="-f bestvideo+bestaudio" #--merge-output-format mp4"
+#YOUTUBE_DL_OPTION="--merge-output-format mp4"
+
+CURL_OPTION="-L"
+#WGET_OPTION="-q"
+#AXEL_OPTION="-q"
+#ARIA2C_OPTION=""
+
+FMT="%(id)s.%(ext)s"
+
+function app()
+{
+#   set -x
+   setup && use "$TASK_DOWNLOAD_USE"
+#   set +x
+}
+
+function run_command()
+{
+   if [ $# -gt 0 ]; then
+      local exe=$1
+      shift 1
+      echo "run $exe command..."
+      case "$exe" in
+        "glive") glive "$@";;
+	"wg") glive 0 1;;
+	"test") echo "nothing to be done!";;
+	*) echo "Not found command $exe!"; exit 1;;
+      esac
+      echo ""
+   fi
+}
+
+function glive()
+{
+  if [ $# -eq 2 ]; then
+    local tmp=$(mktemp -u)
+    local comm="$TOOLS/bin/gff range $@"
+    echo "$comm" && $comm | tee -a $tmp
+    echo ""
+    if [ -e $tmp ]; then
+       comm="$TOOLS/bin/gff-fmt $tmp $URL_LIST"
+       echo "$comm" && $comm
+       rm -rf $tmp
+    fi
+  fi
+}
+
+function setup()
+{
+   rm -rf $URL_LIST
+   while read line; do
+     echo $line | grep -qE "^\\$"
+     if [ $? -eq 0 ] && [ "$line" != "" ]; then
+	run_command $(echo $line | awk -F "$" '{print $2}')
+	continue
+     fi
+
+#     if [ -z $TASK_DOWNLOAD_YOUTUBE_DL_FMT ]; then
+#        echo $line | grep -qE "^#.*:"
+#        if [ $? -eq 0 ] && [ "$line" != "" ]; then
+#           FMT=$(echo $line | awk -F ":" '{print $2}')"_$FMT"
+#	fi
+#     fi
+
+     echo $line | grep -qvE "^[#|=|-]"
+     if [ $? -eq 0 ] && [ "$line" != "" ]; then
+        echo $line | tee -a $URL_LIST
+	echo ""
+     fi
+   done < $README
+   if [ ! -z $TASK_DOWNLOAD_YOUTUBE_DL_FMT ]; then
+      FMT="$TASK_DOWNLOAD_YOUTUBE_DL_FMT"
+   fi
+   echo FMT:$FMT
+}
+
+function use()
+{ 
+  if [ ! -e $URL_LIST ]; then
+     echo "not exist! $URL_LIST"
+     exit 1
+  fi
+  local comm=""
+  case "$1" in
+    "you-get")
+        YOU_GET_OPTION="$TASK_DOWNLOAD_OPTION $YOU_GET_OPTION"
+        base_download you-get
+        #comm="$TOOLS/bin/you-get -I $URL_LIST -o $OUTPUT_DIR -a $YOU_GET_OPTION"
+    ;;
+    "youtube-dl")
+        YOUTUBE_DL_OPTION="$TASK_DOWNLOAD_OPTION $YOUTUBE_DL_OPTION"
+        base_download youtube-dl
+        #comm="$TOOLS/bin/youtube-dl -a $URL_LIST -o $OUTPUT_DIR/$FMT $YOUTUBE_DL_OPTION"
+    ;;
+    "curl")
+        CURL_OPTION="$TASK_DOWNLOAD_OPTION $CURL_OPTION"
+        base_download curl
+    ;;
+    "wget")
+        WGET_OPTION="$TASK_DOWNLOAD_OPTION $WGET_OPTION"
+        base_download wget
+    ;;
+    "axel")
+        AXEL_OPTION="$TASK_DOWNLOAD_OPTION $AXEL_OPTION"
+        base_download axel
+    ;;
+    "aria2c")
+        ARIA2C_OPTION="$TASK_DOWNLOAD_OPTION $ARIA2C_OPTION"
+        base_download aria2c
+    ;;
+    *)
+        echo "Download for nothing. Try to export TASK_DOWNLOAD_USE=you-get or TASK_DOWNLOAD_USE=youtube-dl"
+        exit 1
+    ;;
+  esac
+  ls -lh $OUTPUT_DIR
+  #rm -rf "$URL_LIST"
+}
+
+function base_download()
+{
+   if [ $# -eq 1 ] && [ -e $URL_LIST ]; then
+    local flag="$1"
+    local i=0
+    mkdir -p $OUTPUT_DIR
+    while read line; do
+       local name="$(echo "$line" | awk '{print $2}' | sed "s/:/./g")"
+       local url="$(echo "$line" | awk '{print $1}')"
+       local comm=""
+       echo "downloading... $i"
+       echo "$name"
+       echo "$url"
+       echo "==============================================="
+       case "$flag" in
+	  "you-get")
+             local opt="-o $OUTPUT_DIR"
+             if [ "$name" != "" ]; then
+	        opt="-O $OUTPUT_DIR/$name"
+             fi
+             comm="$TOOLS/bin/you-get -a $YOU_GET_OPTION $opt $url"
+	  ;;
+          "youtube-dl")
+             local opt="-o $OUTPUT_DIR/$FMT"
+             if [ "$name" != "" ]; then
+	        opt="-o $OUTPUT_DIR/${name}.%(ext)s"
+             fi
+             comm="$TOOLS/bin/youtube-dl $YOUTUBE_DL_OPTION $opt $url"
+	   ;;
+           "curl")
+             local opt="-O"
+             if [ "$name" != "" ]; then
+	        opt="-o ${name}"
+             fi
+             USE_EVAL=1
+             comm="cd $OUTPUT_DIR && curl $CURL_OPTION $opt $url"
+	   ;;
+           "wget")
+             local opt="-P $OUTPUT_DIR"
+             if [ "$name" != "" ]; then
+	        opt="-O $OUTPUT_DIR/${name}"
+             fi
+             comm="wget $WGET_OPTION $opt $url"
+	   ;;
+           "axel")
+             local opt=""
+             if [ "$name" != "" ]; then
+	        opt="-o ${name}"
+             fi
+             USE_EVAL=1
+             comm="cd $OUTPUT_DIR && axel $AXEL_OPTION $opt $url"
+	   ;;
+           "aria2c")
+             local opt="-d $OUTPUT_DIR"
+             if [ "$name" != "" ]; then
+	        opt="-d $OUTPUT_DIR -o ${name}"
+             fi
+             comm="aria2c $ARIA2C_OPTION $opt $url"
+	   ;;
+       esac
+       if [ "$comm" != "" ]; then
+          echo -e "$comm\n"
+	  if [ -z $TEST_FLAG ]; then
+	     if [ ! -z $USE_EVAL ]; then
+	        eval $comm
+             else
+		$comm
+	     fi
+	     if [ $? -eq 0 ]; then
+	       printf "\e[1;6;32m%s\e[m\n" "finished! $i"
+	     else
+		if [ ! -z $TASK_DOWNLOAD_FORCE ]; then
+	           printf "\e[1;6;35m%s\e[m\n" "failed! but use TASK_DOWNLOAD_FORCE to continue $i"
+                else
+    		   printf "\e[1;6;31m%s\e[m\n" "error! $i" && exit 1
+		fi
+	     fi
+	  fi
+       else
+          echo "command is null!"
+       fi
+       ((i++))
+       echo ""
+    done < $URL_LIST
+   fi
+}
+
+app $# $*
