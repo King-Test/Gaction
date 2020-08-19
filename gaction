@@ -6,6 +6,7 @@ CONFIG=$ROOT/.config
 UPSS=$ROOT/stage/upss
 STORAGE=$ROOT/stage/storage
 
+
 function app()
 {
   if [ $# -le 1 ]; then
@@ -27,15 +28,17 @@ function app()
       "adc") shift; add_command $*;;
       "config") shift; config $*;;
       "aup") shift; auto_push $*;;
-      "faup") shift; force_auto_push $*;;
+      "aupp") shift; force_auto_push $*;;
       "g") shift; git $*;;
       "gvs") git status;;
       "gd") git diff;;
       "glog"|"gl") git log --oneline --decorate --graph;;
       "c") shift; $*;;
-      "w") android view $(get_url github);;
-      "a") android view $(get_url actions);;
-      "e") android view $(get_url esc);;
+      "w") os browser via $(get_url github);;
+      "a") os browser via $(get_url actions);;
+      "e") os browser via $(get_url esc);;
+      "z") os browser via $(get_url azure);;
+      "t") os browser via $(get_url travis);;
       "r") cat $ROOT/README.md;;
       "install") $ROOT/install;;
       "cc") cat $ROOT/.config;;
@@ -50,11 +53,36 @@ function app()
       "av") shift; $ROOT/stage/test view $*;;
       "in") shift; $ROOT/stage/test ipk $*;;
       "up") shift; $ROOT/stage/test upload $*;;
+      "chx") shift; $ROOT/tools/bin/chx $*;;
+      "ci") shift; switch_ci $*;;
       "lz") shift; $ROOT/tools/bin/lanz;;
       "lzz") shift; $ROOT/tools/bin/lanz once 0 0 $*;;
       *) echo error command! $1; exit 1;;
     esac
   fi
+}
+
+function switch_ci()
+{
+     rm -rf $ROOT/azure-pipelines.yml
+     rm -rf $ROOT/.travis.yml
+     rm -rf $ROOT/.github/workflows/youtube.yml
+     local target_ci="disable all CIs!"
+     case "$1" in
+	"az"|"azure") 
+	    target_ci=$ROOT/azure-pipelines.yml
+	    cp $ROOT/stage/CI/azure.yml $target_ci	
+	    ;;
+        "tr"|"travis")
+	    target_ci=$ROOT/.travis.yml
+	    cp $ROOT/stage/CI/travis.yml $target_ci
+	;;
+        "gi"|"github")
+            target_ci=$ROOT/.github/workflows/youtube.yml
+            cp $ROOT/stage/CI/github.yml $target_ci	
+	;;
+     esac
+     echo $target_ci
 }
 
 function get_url()
@@ -72,6 +100,12 @@ function get_url()
          local zone="$(jq .zone $ROOT/stage/esc_config.json -r)"
          local prid="$(jq .prid $ROOT/stage/esc_config.json -r)"
 	 echo "http://ddl.escience.cn/$zone/list#path=%2F$prid"
+      ;;
+      "travis")
+         echo "https://www.travis-ci.org/github/King-1025/Gaction"
+      ;;
+      "azure")
+	 echo "https://dev.azure.com/King-1025/Gaction/_build"
       ;;
       *) 
 	 echo "not found flag: $1"; 
@@ -95,9 +129,9 @@ function base_auto_push()
    fi
    git add $ROOT && git commit $flag -m "$msg" && $UPSS -dt push
    if [ $? -eq 0 ]; then
-      echo "Gaction推送任务成功，离线下载将在稍后开始，请注意查收邮件！"
+      echo -e "\e[5;32mGaction推送任务成功，离线下载将在稍后开始，请注意查收邮件！\e[m"
    else
-      echo "Gaction推送任务失败！"
+      echo -e "\e[5;31mGaction推送任务失败！\e[m"
       exit 1
    fi
 }
